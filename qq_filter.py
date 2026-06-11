@@ -22,7 +22,7 @@ from pathlib import Path
 class QQFilter:
     """QQ好友/群成员筛选器"""
 
-    def __init__(self, api_url="http://127.0.0.1:8099/", token=None, timeout=30):
+    def __init__(self, api_url="http://127.0.0.1:8099/", token=None, timeout=10):
         self.api_url = api_url.rstrip("/") + "/"
         self.token = token
         self.timeout = timeout
