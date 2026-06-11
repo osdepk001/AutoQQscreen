@@ -525,11 +525,15 @@ class QQFilterGUI:
         return cleaned or "qq_group"
 
     def _get_default_filename(self):
-        """根据选中的群生成默认文件名"""
+        """根据筛选来源生成默认文件名"""
         _, selected = self._get_selected_groups()
-        if len(selected) == 1:
+        if len(selected) >= 1:
+            # 选了一个或多个群：用第一个群名
             group_name = self._clean_filename(selected[0][1])
             return f"{group_name}.txt"
+        elif self.include_friends.get():
+            # 只选了好友：用 QQ好友
+            return "QQ好友.txt"
         return "qq_filter_result.txt"
 
     def export_results(self):
