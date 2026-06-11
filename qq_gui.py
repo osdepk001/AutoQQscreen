@@ -66,9 +66,10 @@ class QQFilter:
         if not friend_list:
             self._log("  好友列表为空或获取失败")
             return
-        self._log(f"  获取到 {len(friend_list)} 个好友，正在查询详细信息...")
+        total = len(friend_list)
+        self._log(f"  获取到 {total} 个好友，正在查询详细信息...")
         count = 0
-        for friend in friend_list:
+        for i, friend in enumerate(friend_list):
             user_id = friend.get("user_id")
             nickname = friend.get("nickname", "")
             remark = friend.get("remark", "")
@@ -80,7 +81,10 @@ class QQFilter:
                 self.results.append((user_id, name, "好友", sex, age))
                 count += 1
             time.sleep(0.3)
-        self._log(f"  好友查询完成，共 {count}/{len(friend_list)}")
+            # 每 20 个显示一次进度
+            if (i + 1) % 20 == 0:
+                self._log(f"  好友进度: {i+1}/{total} (已获取 {count} 人)")
+        self._log(f"  好友查询完成，共 {count}/{total}")
 
     def get_group_members_for_groups(self, selected_groups):
         """获取指定群的成员并查询详细信息"""
@@ -91,8 +95,10 @@ class QQFilter:
             if not members:
                 self._log(f"  成员列表为空")
                 continue
-            self._log(f"  共 {len(members)} 人，正在查询性别年龄...")
-            for m in members:
+            group_size = len(members)
+            self._log(f"  共 {group_size} 人，正在查询性别年龄...")
+            group_done = 0
+            for m_idx, m in enumerate(members):
                 uid = m.get("user_id")
                 nick = m.get("nickname", "")
                 card = m.get("card", "")
@@ -106,7 +112,12 @@ class QQFilter:
                 name = card or nick
                 self.results.append((uid, name, f"群[{group_name}]", sex, age))
                 total += 1
-            time.sleep(0.3)
+                group_done += 1
+                time.sleep(0.3)
+                # 每 30 个显示一次进度
+                if (m_idx + 1) % 30 == 0:
+                    self._log(f"    成员进度: {m_idx+1}/{group_size}")
+            self._log(f"  群 [{group_name}] 查询完成: {group_done}/{group_size}")
         self._log(f"  群成员查询完成，共 {total} 人")
 
     def filter_results(self, sex=None, age=None, min_age=None, max_age=None):
