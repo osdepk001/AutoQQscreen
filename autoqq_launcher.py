@@ -331,32 +331,66 @@ class ServerStarter(threading.Thread):
             self.log_queue.put(("status_api", "等待中"))
 
             max_wait = 30
+            nickname = ""
             for i in range(max_wait):
                 if self._stop_flag:
                     return
-                ready, nickname = check_api_ready()
+                ready, nick = check_api_ready()
                 if ready:
-                    self.log_queue.put(("log", f"API 已就绪！当前登录账号: {nickname}"))
-                    self.log_queue.put(("status_api", "就绪"))
+                    nickname = nick
+                    break
+                time.sleep(1)
+            else:
+                # 超时
+                if self.node_proc and self.node_proc.poll() is None:
+                    self.log_queue.put(("log", "API 响应超时，但 Bot 进程正在运行"))
+                    self.log_queue.put(("status_api", "超时"))
                     self.log_queue.put(("all_ready", True))
                     self.log_queue.put(("log", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
-                    self.log_queue.put(("log", "  所有服务启动完成，可以使用筛选工具了！"))
+                    self.log_queue.put(("log", "  提示：首次使用需在浏览器设置 WebUI 密码"))
+                    self.log_queue.put(("log", "  地址: http://127.0.0.1:3080"))
                     self.log_queue.put(("log", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
-                    return
-                time.sleep(1)
+                else:
+                    self.log_queue.put(("error", "Bot 服务未能正常启动，请查看上方日志排查"))
+                return
 
-            # 超时但 bot 进程仍在运行
-            if self.node_proc and self.node_proc.poll() is None:
-                self.log_queue.put(("log", "API 响应超时，但 Bot 进程正在运行"))
-                self.log_queue.put(("log", "请尝试在浏览器打开 http://127.0.0.1:3080 完成首次设置"))
-                self.log_queue.put(("status_api", "超时(可能需首次设置)"))
-                self.log_queue.put(("all_ready", True))
-                self.log_queue.put(("log", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
-                self.log_queue.put(("log", "  提示：首次使用需在浏览器设置 WebUI 密码"))
-                self.log_queue.put(("log", "  地址: http://127.0.0.1:3080"))
-                self.log_queue.put(("log", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+            # ── 第五步：验证桥接是否真正可用 ──
+            self.log_queue.put(("log", f"API 已就绪 (账号: {nickname})，正在验证桥接..."))
+            self.log_queue.put(("status_api", "验证中"))
+            self.log_queue.put(("tip", "正在验证 QQ 桥接连接，请稍候..."))
+
+            bridge_ok = False
+            for attempt in range(3):
+                if self._stop_flag:
+                    return
+                try:
+                    req = urllib.request.Request(
+                        API_URL + "get_stranger_info",
+                        data=json.dumps({"user_id": nickname}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        result = json.loads(resp.read().decode("utf-8"))
+                        if result.get("status") == "ok" or "data" in result:
+                            bridge_ok = True
+                            self.log_queue.put(("log", "  ✓ 桥接验证通过，连接稳定"))
+                            break
+                except Exception:
+                    if attempt < 2:
+                        self.log_queue.put(("log", f"  验证中... (第{attempt+1}次) "))
+                        time.sleep(2)
+
+            if bridge_ok:
+                self.log_queue.put(("status_api", "就绪"))
             else:
-                self.log_queue.put(("error", "Bot 服务未能正常启动，请查看上方日志排查"))
+                self.log_queue.put(("log", "  ⚠ 桥接响应较慢，但 API 端口正常，可以尝试使用"))
+                self.log_queue.put(("status_api", "就绪(慢)"))
+
+            self.log_queue.put(("all_ready", True))
+            self.log_queue.put(("log", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+            self.log_queue.put(("log", "  所有服务启动完成，可以使用筛选工具了！"))
+            self.log_queue.put(("log", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
 
         except Exception as e:
             self.log_queue.put(("error", f"启动过程出错: {e}"))
@@ -619,6 +653,8 @@ class AutoQQLauncher:
             self.pmhq_label.config(text=" 已断开", fg=self.COLORS["red"])
             self._draw_indicator(self.api_indicator, "red")
             self.api_label.config(text=" 不可用", fg=self.COLORS["red"])
+            # 桥接断开时禁用筛选按钮，防止用户点击后超时
+            self.open_filter_btn.config(state=tk.DISABLED, bg="#9E9E9E")
             self.tip_var.set("PMHQ 桥接已断开！请点击「停止」后重新「启动」")
 
         self.root.after(5000, self._periodic_check_qq)
@@ -684,14 +720,23 @@ class AutoQQLauncher:
                         self._draw_indicator(self.node_indicator, "green")
                         self.node_label.config(text=" 运行中", fg=self.COLORS["green"])
 
+                elif msg_type == "tip":
+                    self.tip_var.set(msg[1])
+
                 elif msg_type == "status_api":
                     status = msg[1]
                     if status == "等待中":
                         self._draw_indicator(self.api_indicator, "orange")
                         self.api_label.config(text=" 等待中...", fg=self.COLORS["orange"])
+                    elif status == "验证中":
+                        self._draw_indicator(self.api_indicator, "blue")
+                        self.api_label.config(text=" 验证中...", fg=self.COLORS["blue"])
                     elif status == "就绪":
                         self._draw_indicator(self.api_indicator, "green")
                         self.api_label.config(text=" 就绪", fg=self.COLORS["green"])
+                    elif status == "就绪(慢)":
+                        self._draw_indicator(self.api_indicator, "orange")
+                        self.api_label.config(text=" 就绪(较慢)", fg=self.COLORS["orange"])
                     elif status.startswith("超时"):
                         self._draw_indicator(self.api_indicator, "orange")
                         self.api_label.config(text=f" {status}", fg=self.COLORS["orange"])
