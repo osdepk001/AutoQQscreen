@@ -1,0 +1,26 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# Node.js 依赖
+node_modules/
+
+# PyInstaller 构建产物
+build/
+*.spec
+
+# LLBot 运行时数据（日志、数据库、用户配置）
+rbt/bin/llbot/data/logs/
+rbt/bin/llbot/data/database/
+rbt/bin/llbot/data/temp/
+rbt/bin/llbot/data/*.json
+
+# QQ 用户数据（NapCat）
+napcat/QQ/
+
+# Windows 缩略图
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
