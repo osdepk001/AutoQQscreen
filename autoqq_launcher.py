@@ -647,15 +647,48 @@ class AutoQQLauncher:
 
         # PMHQ 桥接健康检测：如果之前标记为运行中但端口 13000 消失了，则桥接已崩溃
         current_pmhq_label = self.pmhq_label.cget("text").strip()
-        if ("运行中" in current_pmhq_label or "注入" in current_pmhq_label) and not port_in_use(13000):
+        current_node_label = self.node_label.cget("text").strip()
+        pmhq_is_up = port_in_use(13000)
+        api_is_up = port_in_use(8099)
+
+        if ("运行中" in current_pmhq_label or "注入" in current_pmhq_label) and not pmhq_is_up:
             self._append_log("[警告] PMHQ 桥接已断开！端口 13000 无响应，请重新启动服务")
             self._draw_indicator(self.pmhq_indicator, "red")
             self.pmhq_label.config(text=" 已断开", fg=self.COLORS["red"])
             self._draw_indicator(self.api_indicator, "red")
             self.api_label.config(text=" 不可用", fg=self.COLORS["red"])
-            # 桥接断开时禁用筛选按钮，防止用户点击后超时
             self.open_filter_btn.config(state=tk.DISABLED, bg="#9E9E9E")
             self.tip_var.set("PMHQ 桥接已断开！请点击「停止」后重新「启动」")
+
+        # Bot 崩溃自动恢复：PMHQ 正常但 API 挂了 → 自动重启 Bot
+        elif pmhq_is_up and "运行中" in current_node_label and not api_is_up:
+            self._append_log("[自动恢复] Bot 服务已断开，正在自动重启...")
+            self._draw_indicator(self.node_indicator, "orange")
+            self.node_label.config(text=" 重启中...", fg=self.COLORS["orange"])
+            try:
+                node_exe = find_node_exe()
+                self.node_proc = subprocess.Popen(
+                    [node_exe, "--enable-source-maps", "llbot.js", "--", "--pmhq-port=13000"],
+                    cwd=str(LLBOT_DIR),
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, encoding="utf-8", errors="replace",
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                time.sleep(3)
+                if port_in_use(8099):
+                    self._append_log("[自动恢复] Bot 重启成功！")
+                    self._draw_indicator(self.node_indicator, "green")
+                    self.node_label.config(text=" 运行中", fg=self.COLORS["green"])
+                    self._draw_indicator(self.api_indicator, "green")
+                    self.api_label.config(text=" 就绪", fg=self.COLORS["green"])
+                    if self.all_ready:
+                        self.open_filter_btn.config(state=tk.NORMAL, bg=self.COLORS["blue"])
+                else:
+                    self._append_log("[自动恢复] Bot 重启失败，请手动重新启动服务")
+                    self._draw_indicator(self.node_indicator, "red")
+                    self.node_label.config(text=" 重启失败", fg=self.COLORS["red"])
+            except Exception as e:
+                self._append_log(f"[自动恢复] 重启 Bot 时出错: {e}")
 
         self.root.after(5000, self._periodic_check_qq)
 
