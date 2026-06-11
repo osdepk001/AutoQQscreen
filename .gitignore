@@ -24,3 +24,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# 本地说明文件
+push.md
